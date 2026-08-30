@@ -1,0 +1,8 @@
+{
+  "name": "ZERON",
+  "description": "Premium modern gaming/setup-focused design brand e-commerce storefront.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
