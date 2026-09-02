@@ -22,7 +22,7 @@ const transformProduct = (row: any): Product => {
     reviewCount: row.reviews ? row.reviews.length : 0,
     featured: row.featured,
     bestseller: row.bestseller,
-    newProduct: row.new_product,
+    newProduct: row.new_product || (row.created_at && (new Date().getTime() - new Date(row.created_at).getTime()) < 30 * 24 * 60 * 60 * 1000),
     qikinkDesignSku: row.qikink_design_sku,
     variants: (row.product_variants && row.product_variants.length > 0) ? row.product_variants.map((v: any) => ({
       id: v.id,
@@ -39,6 +39,28 @@ const transformProduct = (row: any): Product => {
     }],
     specifications: {}
   };
+};
+
+
+const processProductArray = (data: any[]) => {
+  if (!data) return [];
+  const products = data.map(transformProduct);
+  const hasBestseller = products.some(p => p.bestseller);
+  if (!hasBestseller && products.length > 0) {
+      let topProduct = products[0];
+      let topScore = -1;
+      products.forEach(p => {
+          const score = p.reviewCount + (p.rating || 0);
+          if (score > topScore) {
+              topScore = score;
+              topProduct = p;
+          }
+      });
+      if (topScore >= 0) {
+          topProduct.bestseller = true;
+      }
+  }
+  return products;
 };
 
 export const api = {
@@ -60,7 +82,8 @@ export const api = {
         console.error('Error fetching products:', error);
         return [];
       }
-      return data ? data.map(transformProduct) : [];
+      return processProductArray(data);
+
     },
     getBySlug: async (slug: string): Promise<Product | undefined> => {
       const { data, error } = await supabase
@@ -101,7 +124,7 @@ export const api = {
         console.error('Error fetching featured products:', error);
         return [];
       }
-      return data ? data.map(transformProduct) : [];
+      return processProductArray(data);
     },
     search: async (query: string): Promise<Product[]> => {
       const { data, error } = await supabase
@@ -121,7 +144,7 @@ export const api = {
         console.error('Error searching products:', error);
         return [];
       }
-      return data ? data.map(transformProduct) : [];
+      return processProductArray(data);
     }
   },
   collections: {

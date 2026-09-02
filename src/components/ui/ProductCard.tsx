@@ -44,6 +44,11 @@ export default function ProductCard({ product }: { product: Product; key?: React
               New
             </span>
           )}
+          {product.bestseller && (
+            <span className="bg-amber-500 text-black text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded-sm">
+              Bestseller
+            </span>
+          )}
           {discount > 0 && (
             <span className="bg-red-600 text-white text-[10px] font-bold tracking-widest uppercase px-2 py-1 rounded-sm">
               -{discount}%

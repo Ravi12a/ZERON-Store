@@ -38,16 +38,24 @@ export default function ShopPage() {
         data = data.filter(p => p.categorySlug === currentCategory || p.category === currentCategory);
       }
       
+      const currentType = searchParams.get("type");
+      if (currentType === "new") {
+        data = data.filter(p => p.newProduct);
+      } else if (currentType === "bestseller") {
+        data = data.filter(p => p.bestseller);
+      }
+      
       // Sort
       if (currentSort === "price-low") data.sort((a, b) => a.price - b.price);
       if (currentSort === "price-high") data.sort((a, b) => b.price - a.price);
       if (currentSort === "newest") data = data.filter(p => p.newProduct).concat(data.filter(p => !p.newProduct));
+      if (currentSort === "bestselling") data = data.filter(p => p.bestseller).concat(data.filter(p => !p.bestseller));
       
       setProducts(data);
       setIsLoading(false);
     };
     fetchProducts();
-  }, [currentCategory, currentCollection, currentSort]);
+  }, [currentCategory, currentCollection, currentSort, searchParams.get("type")]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 w-full">
@@ -67,6 +75,22 @@ export default function ShopPage() {
         </div>
         
         <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto pb-2 md:pb-0">
+          <div className="flex items-center gap-2 border border-neutral-800 rounded-sm px-4 py-2 shrink-0">
+            <SlidersHorizontal className="w-4 h-4 text-neutral-400" />
+            <select 
+              className="bg-transparent text-sm focus:outline-none cursor-pointer"
+              value={searchParams.get("type") || ""}
+              onChange={(e) => {
+                if (e.target.value) searchParams.set("type", e.target.value);
+                else searchParams.delete("type");
+                setSearchParams(searchParams);
+              }}
+            >
+              <option value="" className="bg-neutral-900">All Products</option>
+              <option value="new" className="bg-neutral-900">New Arrivals</option>
+              <option value="bestseller" className="bg-neutral-900">Bestsellers</option>
+            </select>
+          </div>
           <div className="flex items-center gap-2 border border-neutral-800 rounded-sm px-4 py-2 shrink-0">
             <SlidersHorizontal className="w-4 h-4 text-neutral-400" />
             <select 
@@ -96,6 +120,7 @@ export default function ShopPage() {
               }}
             >
               <option value="featured" className="bg-neutral-900">Featured</option>
+              <option value="bestselling" className="bg-neutral-900">Most Selling (Bestseller)</option>
               <option value="newest" className="bg-neutral-900">Newest</option>
               <option value="price-low" className="bg-neutral-900">Price: Low to High</option>
               <option value="price-high" className="bg-neutral-900">Price: High to Low</option>
