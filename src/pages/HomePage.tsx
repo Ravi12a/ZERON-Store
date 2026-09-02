@@ -24,7 +24,7 @@ export default function HomePage() {
       <section className="relative h-[85vh] flex items-center justify-center overflow-hidden">
         <div className="absolute inset-0 z-0">
           <img 
-            src="/file_00000000bc9c8211920dc3c62cfd72e1.png" 
+            src="/Herosectionimage.png" 
             alt="ZERON Desk Setup" 
             className="w-full h-full object-cover opacity-60"
           />
