@@ -134,6 +134,28 @@ export default function CheckoutPage() {
     setAppliedCoupon("");
   };
 
+  
+  const sendEmailFrontend = async (emailPayload: any) => {
+    if (!emailPayload) return;
+    try {
+      await fetch("https://api.web3forms.com/submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({
+          access_key: "94bab13c-8bf6-4f17-b2f3-92297938eac8",
+          subject: emailPayload.subject,
+          from_name: "ZERON Storefront",
+          message: emailPayload.message,
+        })
+      });
+    } catch (e) {
+      console.error("Failed to send Web3Forms email from frontend:", e);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -180,6 +202,7 @@ export default function CheckoutPage() {
       if (!response.ok) throw new Error(data.error || "Failed to create order");
 
       if (data.paymentMethod === 'COD') {
+        if (data.emailPayload) await sendEmailFrontend(data.emailPayload);
         clearCart();
         navigate(`/order-success/${data.dbOrderId}`);
         return;
@@ -215,6 +238,7 @@ export default function CheckoutPage() {
             const verifyData = await verifyRes.json();
             if (!verifyRes.ok) throw new Error(verifyData.error || "Payment verification failed");
             
+            if (verifyData.emailPayload) await sendEmailFrontend(verifyData.emailPayload);
             clearCart();
             navigate(`/order-success/${data.dbOrderId}`);
           } catch (err: any) {
