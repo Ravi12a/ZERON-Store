@@ -336,11 +336,33 @@ async function createQikinkOrder(dbOrderId: string) {
     if (order.qikink_order_id) return { success: true, qikinkOrderId: order.qikink_order_id };
 
     // 2. Fetch Qikink access token securely server-side
+    const qikinkClientId = process.env.QIKINK_CLIENT_ID;
+    const qikinkClientSecret = process.env.QIKINK_CLIENT_SECRET;
+    
     let qikinkToken = "";
-    if (QIKINK_CLIENT_ID && QIKINK_CLIENT_SECRET) {
-      // Typically: fetch token from Qikink API
-      // const tokenRes = await fetch("https://api.qikink.com/api/token", { method: 'POST', ... });
-      qikinkToken = "real_token_generated";
+    
+    if (qikinkClientId && qikinkClientSecret) {
+      const params = new URLSearchParams();
+      params.append('client_id', qikinkClientId);
+      params.append('ClientId', qikinkClientId); // Adding both casings to be safe
+      params.append('client_secret', qikinkClientSecret);
+      
+      const tokenRes = await fetch("https://api.qikink.com/api/token", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+      });
+      
+      if (!tokenRes.ok) {
+        throw new Error(`Qikink Token API failed: ${tokenRes.statusText}`);
+      }
+      
+      const tokenData = await tokenRes.json();
+      qikinkToken = tokenData.access_token || tokenData.token;
+    }
+
+    if (!qikinkToken) {
+      throw new Error("Missing Qikink API credentials or failed to generate token.");
     }
 
     // Determine Qikink gateway format based on payment method
@@ -376,33 +398,36 @@ async function createQikinkOrder(dbOrderId: string) {
 
     console.log("Securely Dispatching to Qikink API:", JSON.stringify(payload));
 
-    /*
-    if (qikinkToken) {
-      const response = await fetch("https://api.qikink.com/api/order/create", {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${qikinkToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-      if (!response.ok) throw new Error("Qikink API failed");
-      const result = await response.json();
-      // Extract qikinkOrderId from result
-    }
-    */
+    const response = await fetch("https://api.qikink.com/api/order/create", {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${qikinkToken}`
+      },
+      body: JSON.stringify(payload)
+    });
     
-    // Simulate Fulfillment Success
-    const qikinkOrderId = `QK-${Date.now()}`;
+    const resultText = await response.text();
+    console.log("Qikink Create Order Response:", resultText);
+    
+    if (!response.ok) {
+      throw new Error(`Qikink Order API failed: ${response.status} - ${resultText}`);
+    }
+    
+    const result = JSON.parse(resultText);
+    
+    // Qikink returns order id usually in the response, we assume it's result.order_id or something similar
+    // Fallback to our order_number if not provided for traceability
+    const qikinkOrderId = result.order_id || result.id || `QK-${order.order_number}`;
     
     // 4. Safely Update Supabase with Qikink Order ID
     await supabase.from('orders').update({
-      qikink_order_id: qikinkOrderId,
+      qikink_order_id: String(qikinkOrderId),
       fulfillment_status: 'processing' // Or matching Qikink status
     }).eq('id', dbOrderId);
 
     return { success: true, qikinkOrderId };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Qikink Order Creation Failed", error);
     // DO NOT fail the payment or order. Retain order for manual/automatic retry.
     await supabase.from('orders').update({

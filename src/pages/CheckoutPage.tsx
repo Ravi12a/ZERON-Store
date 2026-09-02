@@ -316,6 +316,12 @@ export default function CheckoutPage() {
             </div>
           </section>
 
+          <div className="bg-neutral-900/50 border border-neutral-800 p-4 rounded-sm mb-6 mt-6">
+            <p className="text-xs text-neutral-400 leading-relaxed">
+              <strong>Order Confirmation Notice:</strong> After you place an order, a ZERON representative may call you on your provided phone number to confirm the order before it is processed for fulfilment.
+            </p>
+          </div>
+
           <button 
             type="submit" 
             disabled={isSubmitting}

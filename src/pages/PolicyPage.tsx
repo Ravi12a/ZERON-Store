@@ -23,7 +23,7 @@ export default function PolicyPage() {
       case 'returns':
         return {
           title: "Return & Refund Policy",
-          content: "[PLACEHOLDER: Rules regarding returns, 14-day window conditions, non-returnable items, and the refund process.]"
+          content: "Our products are made on demand specifically for each order. Because of this, we generally do not accept returns or exchanges for change of mind, incorrect selection, personal preference, or ordering by mistake.\n\nIf your order arrives damaged, defective, incorrect, or has a genuine production/fulfilment issue, please contact ZERON customer support as soon as possible with your order details and clear photos/videos of the issue. We will review the case and, where applicable, work with our fulfilment partner to provide an appropriate resolution."
         };
       default:
         return {

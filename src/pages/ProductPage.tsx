@@ -229,7 +229,7 @@ export default function ProductPage() {
             >
               <div className="space-y-4 py-2 text-sm text-neutral-400 leading-relaxed">
                 <p>Free standard shipping on all orders over ₹2000. Orders are typically processed and shipped within 1-2 business days.</p>
-                <p>We accept returns within 14 days of delivery. The item must be unused and in original packaging.</p>
+                <p>Because items are made on demand, we do not accept returns for change of mind. Please see our Return Policy for details on replacing defective or damaged items.</p>
               </div>
             </AccordionItem>
           </div>

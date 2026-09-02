@@ -25,6 +25,15 @@ export default function AboutPage() {
           <p>
             ZERON was founded on a simple principle: to create original, high-quality designs for people who care about their workspace. We step away from the loud, chaotic designs often found in the gaming industry, focusing instead on premium, minimal, and modern visual identities.
           </p>
+          <p>
+            ZERON is a design-focused brand offering custom-designed products through a print-on-demand model. The designs and creative concepts are created by ZERON.
+          </p>
+          <p>
+            ZERON partners with Qikink as its print-on-demand fulfilment supplier. Printing, packaging, shipping, and delivery fulfilment are handled by Qikink, while ZERON focuses on creating and providing the designs.
+          </p>
+          <p>
+            ZERON is owned and operated by Ravi Kumar.
+          </p>
         </div>
       </section>
 
@@ -60,7 +69,7 @@ export default function AboutPage() {
           <FaqItem question="What material are the mouse pads made from?" answer="We use a variety of premium surfaces depending on the model, including micro-woven cloth for balanced glide, and textured hybrid weaves for maximum control. All mats feature a natural rubber anti-slip base." />
           <FaqItem question="How do I clean my mouse pad?" answer="For most of our cloth pads, we recommend spot cleaning with a damp microfiber cloth and mild soap. Air dry completely before use. Do not machine wash unless explicitly stated on the product page." />
           <FaqItem question="How long does delivery take?" answer="Standard delivery within India takes 3-7 business days. Metro cities usually see faster delivery times." />
-          <FaqItem question="Do you accept returns?" answer="Yes, we accept returns within 14 days of delivery for unused items in their original packaging. Please see our Return Policy for full details." />
+          <FaqItem question="Do you accept returns?" answer="As our products are made on demand specifically for each order, we generally do not accept returns for change of mind or incorrect selection. If there is a genuine defect or damage, please contact us for a resolution. See our Return Policy for full details." />
           <FaqItem question="Do you offer COD?" answer="Yes, Cash on Delivery is available for most pin codes across India." />
         </div>
       </section>
