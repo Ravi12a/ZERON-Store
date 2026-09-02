@@ -85,46 +85,68 @@ export const useCartStore = create<CartState>()(
         if (items.length === 0) return;
         
         try {
-          const variantIds = items.map(item => item.variant.id);
-          const { data: dbVariants, error } = await supabase
-            .from('product_variants')
-            .select('id, price, product_id, products(active, base_price)')
-            .in('id', variantIds);
-            
-          if (error) {
-            console.error("Failed to sync cart prices:", error);
-            return;
+          const realVariantItems = items.filter(item => item.variant.id !== item.product.id);
+          const fallbackItems = items.filter(item => item.variant.id === item.product.id);
+
+          const realVariantIds = realVariantItems.map(item => item.variant.id);
+          const fallbackProductIds = fallbackItems.map(item => item.product.id);
+
+          let dbVariants = [];
+          if (realVariantIds.length > 0) {
+            const { data, error } = await supabase
+              .from('product_variants')
+              .select('id, price, product_id, products(active, base_price)')
+              .in('id', realVariantIds);
+            if (!error && data) dbVariants = data;
           }
-          
-          if (!dbVariants) return;
+
+          let dbProducts = [];
+          if (fallbackProductIds.length > 0) {
+            const { data, error } = await supabase
+              .from('products')
+              .select('id, active, base_price')
+              .in('id', fallbackProductIds);
+            if (!error && data) dbProducts = data;
+          }
           
           set((state) => {
             let changed = false;
             const newItems = state.items.map(item => {
-              const dbVariant = dbVariants.find((v: any) => v.id === item.variant.id);
-              // Remove inactive/deleted variants
-              if (!dbVariant || ! (dbVariant.products as any)?.active) {
-                changed = true;
-                return null;
-              }
-              const currentPrice = dbVariant.price ??  (dbVariant.products as any).base_price;
+              const isFallback = item.variant.id === item.product.id;
               
-              if (item.variant.price !== currentPrice) {
-                 changed = true;
-                 return {
+              if (isFallback) {
+                const dbProduct = dbProducts.find(p => p.id === item.product.id);
+                if (!dbProduct || !dbProduct.active) {
+                  changed = true;
+                  return null;
+                }
+                if (item.variant.price !== dbProduct.base_price) {
+                  changed = true;
+                  return {
                     ...item,
-                    variant: {
-                       ...item.variant,
-                       price: currentPrice
-                    },
-                    product: {
-                       ...item.product,
-                       base_price:  (dbVariant.products as any).base_price
-                    }
-                 };
+                    variant: { ...item.variant, price: dbProduct.base_price },
+                    product: { ...item.product, price: dbProduct.base_price }
+                  };
+                }
+                return item;
+              } else {
+                const dbVariant = dbVariants.find(v => v.id === item.variant.id);
+                if (!dbVariant || !dbVariant.products?.active) {
+                  changed = true;
+                  return null;
+                }
+                const currentPrice = dbVariant.price ?? dbVariant.products.base_price;
+                if (item.variant.price !== currentPrice) {
+                   changed = true;
+                   return {
+                      ...item,
+                      variant: { ...item.variant, price: currentPrice },
+                      product: { ...item.product, price: dbVariant.products.base_price }
+                   };
+                }
+                return item;
               }
-              return item;
-            }).filter(Boolean) as CartItem[];
+            }).filter(Boolean);
             
             return changed ? { items: newItems } : state;
           });
