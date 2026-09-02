@@ -26,6 +26,7 @@ export interface Product {
   featured: boolean;
   bestseller: boolean;
   newProduct: boolean;
+  qikinkDesignSku?: string;
   variants: Variant[];
   specifications: Record<string, string>;
 }

@@ -113,7 +113,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
     const variantIds = items.map((i: any) => i.variantId);
     const { data: variants, error: variantsError } = await supabase
       .from('product_variants')
-      .select('*, products(name, active, base_price, images:product_images(image_url))')
+      .select('*, products(name, active, base_price, qikink_design_sku, images:product_images(image_url))')
       .in('id', variantIds);
 
     if (variantsError || !variants || variants.length === 0) {
@@ -133,14 +133,15 @@ app.post("/api/checkout/create-order", async (req, res) => {
       const price = dbVariant.price ?? dbVariant.products.base_price;
       subtotal += price * item.quantity;
       
-      if (!dbVariant.qikink_sku) missingMapping = true;
+      const finalQikinkSku = dbVariant.qikink_sku || dbVariant.products?.qikink_design_sku || "";
+      if (!finalQikinkSku) missingMapping = true;
 
       orderItemsToInsert.push({
         product_id: dbVariant.product_id,
         variant_id: dbVariant.id,
         product_name: dbVariant.products.name,
         variant_name: dbVariant.name,
-        qikink_sku: dbVariant.qikink_sku || "",
+        qikink_sku: finalQikinkSku,
         quantity: item.quantity,
         unit_price: price,
         total_price: price * item.quantity,

@@ -23,18 +23,19 @@ const transformProduct = (row: any): Product => {
     featured: row.featured,
     bestseller: row.bestseller,
     newProduct: row.new_product,
+    qikinkDesignSku: row.qikink_design_sku,
     variants: (row.product_variants && row.product_variants.length > 0) ? row.product_variants.map((v: any) => ({
       id: v.id,
       name: v.name,
       price: v.price,
       available: v.available,
-      qikinkSku: v.qikink_sku
+      qikinkSku: v.qikink_sku || row.qikink_design_sku || ''
     })) : [{
       id: row.id, // Fallback variant uses product ID
       name: 'Default',
       price: row.base_price,
       available: true,
-      qikinkSku: ''
+      qikinkSku: row.qikink_design_sku || ''
     }],
     specifications: {}
   };
