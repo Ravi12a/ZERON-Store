@@ -424,7 +424,7 @@ async function createQikinkOrder(dbOrderId: string) {
     // 4. Safely Update Supabase with Qikink Order ID
     await supabase.from('orders').update({
       qikink_order_id: String(qikinkOrderId),
-      fulfillment_status: 'processing' // Or matching Qikink status
+      fulfillment_status: 'on_hold' // Matches Qikink's manual approval queue
     }).eq('id', dbOrderId);
 
     return { success: true, qikinkOrderId };
