@@ -25,13 +25,14 @@ key_secret: process.env.RAZORPAY_KEY_SECRET || "test_secret",
 });
 
 async function getUserFromAuthHeader(req: express.Request) {
-const authHeader = req.headers.authorization;
-if (!authHeader) return null;
-const token = authHeader.replace("Bearer ", "");
-if (!token) return null;
+const authHeader = req.headers['x-supabase-auth'] as string || req.headers.authorization || req.headers.Authorization as string;
+if (!authHeader) return { user: null, errorReason: "Missing Authorization header" };
+const token = authHeader.replace("Bearer ", "").trim();
+if (!token) return { user: null, errorReason: "Empty token" };
 const { data: { user }, error } = await supabase.auth.getUser(token);
-if (error || !user) return null;
-return user;
+if (error) return { user: null, errorReason: `Supabase error: ${error.message}` };
+if (!user) return { user: null, errorReason: "User not found in token" };
+return { user, errorReason: null };
 }
 
 
@@ -45,10 +46,10 @@ app.use(express.json());
 app.post("/api/checkout/validate-coupon", async (req, res) => {
   try {
     const { couponCode, subtotal } = req.body;
-    const user = await getUserFromAuthHeader(req);
+    const { user, errorReason } = await getUserFromAuthHeader(req);
     
     if (!user) {
-      return res.status(401).json({ error: "Please log in to use coupons." });
+      return res.status(401).json({ error: `Please log in to use coupons. Details: ${errorReason}` });
     }
 
     const { data: coupon, error } = await supabase
@@ -104,9 +105,9 @@ app.post("/api/checkout/create-order", async (req, res) => {
   try {
     const { items, customer, couponCode, paymentMethod } = req.body; // items: {variantId, productId, quantity}[]
     
-    const user = await getUserFromAuthHeader(req);
+    const { user, errorReason } = await getUserFromAuthHeader(req);
     if (!user) {
-      return res.status(401).json({ error: "Authentication required to place an order." });
+      return res.status(401).json({ error: `Authentication required to place an order. Details: ${errorReason}` });
     }
 
     // 1. Verify products/variants and calculate secure prices

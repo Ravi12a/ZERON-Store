@@ -32,7 +32,10 @@ export default function CheckoutPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              ...(token ? { "Authorization": `Bearer ${token}` } : {})
+              ...(token ? { 
+                "Authorization": `Bearer ${token}`,
+                "x-supabase-auth": `Bearer ${token}` 
+              } : {})
             },
             body: JSON.stringify({ couponCode: appliedCoupon, subtotal })
           });
@@ -104,7 +107,10 @@ export default function CheckoutPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { "Authorization": `Bearer ${token}` } : {})
+          ...(token ? { 
+            "Authorization": `Bearer ${token}`,
+            "x-supabase-auth": `Bearer ${token}`
+          } : {})
         },
         body: JSON.stringify({ couponCode, subtotal })
       });
@@ -164,7 +170,8 @@ export default function CheckoutPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
+          "Authorization": `Bearer ${token}`,
+          "x-supabase-auth": `Bearer ${token}`
         },
         body: JSON.stringify(orderPayload)
       });
@@ -195,7 +202,8 @@ export default function CheckoutPage() {
               method: "POST",
               headers: { 
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}` 
+                "Authorization": `Bearer ${token}`,
+                "x-supabase-auth": `Bearer ${token}`
               },
               body: JSON.stringify({
                 razorpay_order_id: response.razorpay_order_id,
