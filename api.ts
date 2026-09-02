@@ -9,15 +9,27 @@ import { createClient } from "@supabase/supabase-js";
 dotenv.config();
 
 // Ensure required environment variables
-const SUPABASE_URL = process.env.VITE_SUPABASE_URL || "";
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
+const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || "";
+
+// Clean up any stray quotes Netlify might inject
+const cleanSupabaseUrl = SUPABASE_URL.replace(/["']/g, "").trim();
+const cleanSupabaseAnonKey = SUPABASE_ANON_KEY.replace(/["']/g, "").trim();
+
 const QIKINK_CLIENT_ID = process.env.QIKINK_CLIENT_ID || "";
 const QIKINK_CLIENT_SECRET = process.env.QIKINK_CLIENT_SECRET || "";
 
-// Supabase client using Service Role for backend admin tasks (inserting orders securely)
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-auth: { autoRefreshToken: false, persistSession: false },
-});
+// Create a helper to generate an authenticated Supabase client for a specific user
+function getSupabaseClient(token?: string) {
+  const options: any = { auth: { autoRefreshToken: false, persistSession: false } };
+  if (token) {
+    options.global = { headers: { Authorization: `Bearer ${token}` } };
+  }
+  return createClient(cleanSupabaseUrl || "https://placeholder.supabase.co", cleanSupabaseAnonKey || "placeholder_key", options);
+}
+
+// Default anon client for things like fetching coupons or public products
+const supabase = getSupabaseClient();
 
 const razorpay = new Razorpay({
 key_id: process.env.RAZORPAY_KEY_ID || "",
@@ -25,14 +37,19 @@ key_secret: process.env.RAZORPAY_KEY_SECRET || "",
 });
 
 async function getUserFromAuthHeader(req: express.Request) {
+if (!cleanSupabaseUrl || cleanSupabaseUrl.includes("placeholder") || !cleanSupabaseAnonKey || cleanSupabaseAnonKey.includes("placeholder")) {
+  return { user: null, token: null, errorReason: `Server Configuration Error: The Supabase API key or URL is missing from the Netlify environment variables.` };
+}
 const authHeader = req.headers['x-supabase-auth'] as string || req.headers.authorization || req.headers.Authorization as string;
-if (!authHeader) return { user: null, errorReason: "Missing Authorization header" };
+if (!authHeader) return { user: null, token: null, errorReason: "Missing Authorization header" };
 const token = authHeader.replace("Bearer ", "").trim();
-if (!token) return { user: null, errorReason: "Empty token" };
+if (!token) return { user: null, token: null, errorReason: "Empty token" };
+
+// Validate the user's token using the anon key
 const { data: { user }, error } = await supabase.auth.getUser(token);
-if (error) return { user: null, errorReason: `Supabase error: ${error.message}` };
-if (!user) return { user: null, errorReason: "User not found in token" };
-return { user, errorReason: null };
+if (error) return { user: null, token: null, errorReason: `Supabase error: ${error.message}` };
+if (!user) return { user: null, token: null, errorReason: "User not found in token" };
+return { user, token, errorReason: null };
 }
 
 
@@ -46,13 +63,15 @@ app.use(express.json());
 app.post("/api/checkout/validate-coupon", async (req, res) => {
   try {
     const { couponCode, subtotal } = req.body;
-    const { user, errorReason } = await getUserFromAuthHeader(req);
+    const { user, token, errorReason } = await getUserFromAuthHeader(req);
     
-    if (!user) {
+    if (!user || !token) {
       return res.status(401).json({ error: `Please log in to use coupons. Details: ${errorReason}` });
     }
 
-    const { data: coupon, error } = await supabase
+    const userSupabase = getSupabaseClient(token);
+
+    const { data: coupon, error } = await userSupabase
       .from('coupons')
       .select('*')
       .eq('code', couponCode.toUpperCase())
@@ -70,7 +89,7 @@ app.post("/api/checkout/validate-coupon", async (req, res) => {
 
     // If it's WELCOME60, it's a first-order coupon
     if (coupon.code === 'WELCOME60') {
-      const { count } = await supabase
+      const { count } = await userSupabase
         .from('orders')
         .select('id', { count: 'exact', head: true })
         .eq('user_id', user.id);
@@ -105,14 +124,18 @@ app.post("/api/checkout/create-order", async (req, res) => {
   try {
     const { items, customer, couponCode, paymentMethod } = req.body; // items: {variantId, productId, quantity}[]
     
-    const { user, errorReason } = await getUserFromAuthHeader(req);
-    if (!user) {
+    const { user, token, errorReason } = await getUserFromAuthHeader(req);
+    if (!user || !token) {
       return res.status(401).json({ error: `Authentication required to place an order. Details: ${errorReason}` });
     }
 
+    // Create a Supabase client that authenticates exactly as this user
+    const userSupabase = getSupabaseClient(token);
+
     // 1. Verify products/variants and calculate secure prices
+    // It's safe to use the public 'supabase' client for this, or userSupabase
     const variantIds = items.map((i: any) => i.variantId);
-    const { data: variants, error: variantsError } = await supabase
+    const { data: variants, error: variantsError } = await userSupabase
       .from('product_variants')
       .select('*, products(name, active, base_price, qikink_design_sku, images:product_images(image_url))')
       .in('id', variantIds);
@@ -154,7 +177,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
     let discount = 0;
     let validCoupon = null;
     if (couponCode) {
-      const { data: coupon } = await supabase
+      const { data: coupon } = await userSupabase
         .from('coupons')
         .select('*')
         .eq('code', couponCode.toUpperCase())
@@ -165,7 +188,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
          // First-order logic
          let eligible = true;
          if (coupon.code === 'WELCOME60') {
-           const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true }).eq('user_id', user.id);
+           const { count } = await userSupabase.from('orders').select('id', { count: 'exact', head: true }).eq('user_id', user.id);
            if (count && count > 0) eligible = false;
          }
          
@@ -190,7 +213,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
     const orderNumber = `ZERON-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
     // 3. Create Pending Order in Supabase
-    const { data: orderData, error: orderError } = await supabase
+    const { data: orderData, error: orderError } = await userSupabase
       .from('orders')
       .insert({
         user_id: user.id,
@@ -219,7 +242,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
     if (orderError) {
        // If migration isn't run, fallback to insert without new columns
        if (orderError.code === '42703') { // Column does not exist
-           const { data: fallbackOrder, error: fallbackErr } = await supabase
+           const { data: fallbackOrder, error: fallbackErr } = await userSupabase
             .from('orders')
             .insert({
               user_id: user.id,
@@ -242,19 +265,19 @@ app.post("/api/checkout/create-order", async (req, res) => {
 
     // Insert Order Items
     const itemsToInsert = orderItemsToInsert.map(item => ({ ...item, order_id: orderData.id }));
-    const { error: itemsError } = await supabase.from('order_items').insert(itemsToInsert);
+    const { error: itemsError } = await userSupabase.from('order_items').insert(itemsToInsert);
     if (itemsError) throw new Error(itemsError.message);
 
     // Increment Coupon usage
     if (validCoupon) {
-      try { await supabase.rpc('increment_coupon_usage', { p_code: validCoupon }); } catch (e) {}
+      try { await userSupabase.rpc('increment_coupon_usage', { p_code: validCoupon }); } catch (e) {}
     }
 
     // 4. Payment Gateway Logic
     if (isCOD) {
       // Direct to Qikink Fulfillment
       if (!missingMapping) {
-         await createQikinkOrder(orderData.id);
+         await createQikinkOrder(orderData.id, token);
       }
       res.json({ success: true, dbOrderId: orderData.id, paymentMethod: 'COD' });
     } else {
@@ -294,6 +317,13 @@ app.post("/api/checkout/verify", async (req, res) => {
       return res.status(400).json({ error: "Missing payment verification fields" });
     }
     
+    const { user, token, errorReason } = await getUserFromAuthHeader(req);
+    if (!user || !token) {
+      return res.status(401).json({ error: `Authentication required. Details: ${errorReason}` });
+    }
+    
+    const userSupabase = getSupabaseClient(token);
+    
     const secret = process.env.RAZORPAY_KEY_SECRET || "";
     
     const generated_signature = crypto
@@ -306,13 +336,13 @@ app.post("/api/checkout/verify", async (req, res) => {
     }
 
     // Update Order Status to Paid
-    await supabase
+    await userSupabase
       .from('orders')
       .update({ payment_status: 'paid', status: 'processing', payment_id: razorpay_payment_id })
       .eq('id', dbOrderId);
 
     // Create Qikink Order
-    const qikinkResponse = await createQikinkOrder(dbOrderId);
+    const qikinkResponse = await createQikinkOrder(dbOrderId, token);
 
     res.json({ success: true, qikinkResponse });
   } catch (error: any) {
@@ -323,10 +353,11 @@ app.post("/api/checkout/verify", async (req, res) => {
 
 
 // Helper: Call Qikink Open API securely
-async function createQikinkOrder(dbOrderId: string) {
+async function createQikinkOrder(dbOrderId: string, token: string) {
   try {
+    const userSupabase = getSupabaseClient(token);
     // 1. Fetch order details & items from Supabase
-    const { data: order, error } = await supabase
+    const { data: order, error } = await userSupabase
       .from('orders')
       .select('*, order_items(*)')
       .eq('id', dbOrderId)
@@ -423,7 +454,7 @@ async function createQikinkOrder(dbOrderId: string) {
     const qikinkOrderId = result.order_id || result.id || `QK-${order.order_number}`;
     
     // 4. Safely Update Supabase with Qikink Order ID
-    await supabase.from('orders').update({
+    await userSupabase.from('orders').update({
       qikink_order_id: String(qikinkOrderId),
       fulfillment_status: 'on_hold' // Matches Qikink's manual approval queue
     }).eq('id', dbOrderId);
@@ -432,7 +463,7 @@ async function createQikinkOrder(dbOrderId: string) {
   } catch (error: any) {
     console.error("Qikink Order Creation Failed", error);
     // DO NOT fail the payment or order. Retain order for manual/automatic retry.
-    await supabase.from('orders').update({
+    await userSupabase.from('orders').update({
       fulfillment_status: 'api_error' 
     }).eq('id', dbOrderId);
     return null;
