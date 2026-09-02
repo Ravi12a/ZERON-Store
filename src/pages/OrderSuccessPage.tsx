@@ -37,9 +37,9 @@ export default function OrderSuccessPage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-24 w-full flex flex-col items-center">
       <CheckCircle className="w-20 h-20 text-green-500 mb-8" />
-      <h1 className="text-4xl font-bold mb-4 tracking-widest uppercase text-center">Order Confirmed</h1>
-      <p className="text-xl text-neutral-400 mb-2 font-light">Your setup just got an upgrade.</p>
-      <p className="text-neutral-500 mb-12">Order #{order?.order_number || orderId}</p>
+      <h1 className="text-4xl font-bold mb-4 tracking-widest uppercase text-center">Order Placed Successfully 🎉</h1>
+      <p className="text-xl text-neutral-400 mb-2 font-light text-center">Thank you for shopping with ZERON. We will contact you shortly to confirm your order.</p>
+      <p className="text-neutral-500 mb-12">Order ID: {order?.order_number || orderId}</p>
 
       {loading ? (
         <div className="text-neutral-500 mb-12">Loading order details...</div>

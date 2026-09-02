@@ -191,7 +191,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
 
       orderItemsToInsert.push({
         product_id: dbProduct.id,
-        variant_id: dbVariant.id,
+        variant_id: isFallbackVariant ? null : dbVariant.id,
         product_name: dbProduct.name,
         variant_name: dbVariant.name || "Default",
         qikink_sku: finalQikinkSku,
@@ -305,9 +305,8 @@ app.post("/api/checkout/create-order", async (req, res) => {
     // 4. Payment Gateway Logic
     if (isCOD) {
       // Direct to Qikink Fulfillment
-      if (!missingMapping) {
-         await createQikinkOrder(orderData.id, token);
-      }
+       
+         await sendWeb3FormsEmail(orderData.id, token);
       res.json({ success: true, dbOrderId: orderData.id, paymentMethod: 'COD' });
     } else {
       // Prepaid via Razorpay
@@ -338,7 +337,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
   }
 });
 
-// Verify Razorpay Payment & Create Qikink Order
+// Verify Razorpay Payment & Send Email
 app.post("/api/checkout/verify", async (req, res) => {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, dbOrderId } = req.body;
@@ -354,6 +353,7 @@ app.post("/api/checkout/verify", async (req, res) => {
     const userSupabase = getSupabaseClient(token);
     
     const secret = process.env.RAZORPAY_KEY_SECRET || "";
+    const crypto = require("crypto");
     
     const generated_signature = crypto
       .createHmac("sha256", secret)
@@ -370,22 +370,21 @@ app.post("/api/checkout/verify", async (req, res) => {
       .update({ payment_status: 'paid', status: 'processing', payment_id: razorpay_payment_id })
       .eq('id', dbOrderId);
 
-    // Create Qikink Order
-    const qikinkResponse = await createQikinkOrder(dbOrderId, token);
+    // Send Web3Forms Email
+    await sendWeb3FormsEmail(dbOrderId, token);
 
-    res.json({ success: true, qikinkResponse });
+    res.json({ success: true });
   } catch (error: any) {
     console.error("Verification Error:", error);
     res.status(500).json({ error: error.message || "Payment verification failed" });
   }
 });
 
-
-// Helper: Call Qikink Open API securely
-async function createQikinkOrder(dbOrderId: string, token: string) {
+// Helper: Send Web3Forms Notification
+async function sendWeb3FormsEmail(dbOrderId: string, token: string) {
   try {
     const userSupabase = getSupabaseClient(token);
-    // 1. Fetch order details & items from Supabase
+    
     const { data: order, error } = await userSupabase
       .from('orders')
       .select('*, order_items(*)')
@@ -393,110 +392,155 @@ async function createQikinkOrder(dbOrderId: string, token: string) {
       .single();
       
     if (error || !order) return null;
-    
-    // Idempotency: Don't recreate if already sent to Qikink
-    if (order.qikink_order_id) return { success: true, qikinkOrderId: order.qikink_order_id };
 
-    // 2. Fetch Qikink access token securely server-side
-    const qikinkClientId = process.env.QIKINK_CLIENT_ID;
-    const qikinkClientSecret = process.env.QIKINK_CLIENT_SECRET;
-    
-    let qikinkToken = "";
-    
-    if (qikinkClientId && qikinkClientSecret) {
-      const params = new URLSearchParams();
-      params.append('client_id', qikinkClientId);
-      params.append('ClientId', qikinkClientId); // Adding both casings to be safe
-      params.append('client_secret', qikinkClientSecret);
-      
-      const tokenRes = await fetch("https://api.qikink.com/api/token", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params
-      });
-      
-      if (!tokenRes.ok) {
-        throw new Error(`Qikink Token API failed: ${tokenRes.statusText}`);
-      }
-      
-      const tokenData = await tokenRes.json();
-      qikinkToken = tokenData.access_token || tokenData.token;
+    const formatItems = order.order_items.map((item: any, i: number) => `Product ${i + 1}:
+Product Name:
+${item.product_name}
+
+Quantity:
+${item.quantity}
+
+ZERON Product ID:
+${item.product_id}
+
+ZERON Variant ID:
+${item.variant_id || 'N/A'}
+
+Qikink Design SKU:
+${item.qikink_sku || 'N/A'}
+
+Product Price:
+₹${item.unit_price}
+
+Line Total:
+₹${item.total_price}`).join('\n\n');
+
+    let customer = order.shipping_address;
+    if (typeof customer === 'string') {
+        try { customer = JSON.parse(customer); } catch(e) {}
     }
 
-    if (!qikinkToken) {
-      throw new Error("Missing Qikink API credentials or failed to generate token.");
-    }
+    const emailBody = `--------------------------------
+ZERON NEW ORDER
+--------------------------------
 
-    // Determine Qikink gateway format based on payment method
-    // Important: COD Order Value = customer final payable amount
-    const isCOD = order.payment_method === 'COD'; // Relies on migration column, fallback logic if needed
-    
-    // 3. Construct Payload adhering strictly to Qikink Open API schema
-    const payload = {
-      order_number: order.order_number,
-      qikink_shipping: "1", // Example standard shipping
-      gateway: isCOD ? "CASH ON DELIVERY" : "Prepaid",
-      total_order_value: order.total, // The EXACT final amount after discount!
-      first_name: order.customer_name.split(" ")[0] || "Customer",
-      last_name: order.customer_name.split(" ").slice(1).join(" ") || "Name",
-      address1: order.shipping_address.address_line_1 || order.shipping_address.address || "Address 1",
-      address2: order.shipping_address.address_line_2 || order.shipping_address.apartment || "",
-      city: order.shipping_address.city || "City",
-      state: order.shipping_address.state || "State",
-      country: order.shipping_address.country || "India",
-      zip: order.shipping_address.postal_code || order.shipping_address.pincode || "000000",
-      phone: order.customer_phone || order.shipping_address.phone || "0000000000",
-      email: order.customer_email || "customer@example.com",
-      line_items: order.order_items.map((item: any) => ({
-         sku: item.qikink_sku,
-         quantity: item.quantity,
-         price: item.unit_price,
-         discount: item.allocated_discount || 0
-      }))
-      // NOTE: Qikink Open API documentation does not publicly document the fields for 
-      // Box Packing or Custom Letter. Do NOT invent fields here. 
-      // ZERON handles this via Account/Admin dashboard database flags until Qikink provides the keys.
-    };
+Order ID:
+${order.order_number}
 
-    console.log("Securely Dispatching to Qikink API:", JSON.stringify(payload));
+Order Date:
+${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}
 
-    const response = await fetch("https://api.qikink.com/api/order/create", {
-      method: 'POST',
+Payment Method:
+${order.payment_method === 'COD' ? 'COD' : 'ONLINE PAYMENT'}
+
+Payment Status:
+${order.payment_status === 'paid' ? 'PAID' : (order.payment_method === 'COD' ? 'COD' : order.payment_status)}
+
+Order Status:
+NEW - MANUAL QIKINK FULFILMENT
+
+--------------------------------
+CUSTOMER DETAILS
+--------------------------------
+
+Customer Name:
+${order.customer_name}
+
+Email:
+${order.customer_email}
+
+Phone:
+${order.customer_phone || 'N/A'}
+
+--------------------------------
+SHIPPING ADDRESS
+--------------------------------
+
+First Name:
+${order.customer_name.split(' ')[0]}
+
+Last Name:
+${order.customer_name.split(' ').slice(1).join(' ')}
+
+Address:
+${customer.address_line_1 || customer.address || 'N/A'}
+
+Apartment/Suite:
+${customer.address_line_2 || customer.apartment || 'N/A'}
+
+City:
+${customer.city || 'N/A'}
+
+State:
+${customer.state || 'N/A'}
+
+Pincode:
+${customer.postal_code || customer.pincode || 'N/A'}
+
+Country:
+India
+
+--------------------------------
+ORDER ITEMS
+--------------------------------
+
+${formatItems}
+
+--------------------------------
+PRICE SUMMARY
+--------------------------------
+
+Subtotal:
+₹${order.subtotal}
+
+Discount:
+-₹${order.discount || 0}
+
+Coupon:
+${order.coupon_code || 'None'}
+
+Shipping:
+₹${order.shipping_fee || 0}
+
+Final Customer Total:
+₹${order.total}
+
+--------------------------------
+FULFILMENT
+--------------------------------
+
+Fulfilment Method:
+Manual Qikink Fulfilment
+
+Qikink Action:
+Search the Qikink Design SKU and manually create the order.
+
+Packaging:
+Box Packing
+
+Custom Letter:
+ZERON Custom Thank You Letter`;
+
+    const res = await fetch("https://api.web3forms.com/submit", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${qikinkToken}`
+        "Content-Type": "application/json",
+        Accept: "application/json"
       },
-      body: JSON.stringify(payload)
+      body: JSON.stringify({
+        access_key: "94bab13c-8bf6-4f17-b2f3-92297938eac8",
+        subject: `New ZERON ${order.payment_method === 'COD' ? 'COD' : 'Paid'} Order - ${order.order_number}`,
+        from_name: "ZERON Storefront",
+        message: emailBody,
+      })
     });
-    
-    const resultText = await response.text();
-    console.log("Qikink Create Order Response:", resultText);
-    
-    if (!response.ok) {
-      throw new Error(`Qikink Order API failed: ${response.status} - ${resultText}`);
-    }
-    
-    const result = JSON.parse(resultText);
-    
-    // Qikink returns order id usually in the response, we assume it's result.order_id or something similar
-    // Fallback to our order_number if not provided for traceability
-    const qikinkOrderId = result.order_id || result.id || `QK-${order.order_number}`;
-    
-    // 4. Safely Update Supabase with Qikink Order ID
-    await userSupabase.from('orders').update({
-      qikink_order_id: String(qikinkOrderId),
-      fulfillment_status: 'on_hold' // Matches Qikink's manual approval queue
-    }).eq('id', dbOrderId);
 
-    return { success: true, qikinkOrderId };
-  } catch (error: any) {
-    console.error("Qikink Order Creation Failed", error);
-    // DO NOT fail the payment or order. Retain order for manual/automatic retry.
-    await userSupabase.from('orders').update({
-      fulfillment_status: 'api_error' 
-    }).eq('id', dbOrderId);
-    return null;
+    if (!res.ok) {
+      console.error("Failed to send order email:", await res.text());
+    } else {
+      console.log("Successfully sent order email to Web3Forms for order", order.order_number);
+    }
+  } catch (error) {
+    console.error("Error sending Web3Forms email:", error);
   }
 }
-
-
