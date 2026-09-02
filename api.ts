@@ -134,14 +134,19 @@ app.post("/api/checkout/create-order", async (req, res) => {
 
     // 1. Verify products/variants and calculate secure prices
     // It's safe to use the public 'supabase' client for this, or userSupabase
-    const variantIds = items.map((i: any) => i.variantId);
-    const { data: variants, error: variantsError } = await userSupabase
-      .from('product_variants')
-      .select('*, products(name, active, base_price, qikink_design_sku, images:product_images(image_url))')
-      .in('id', variantIds);
+    const productIds = items.map((i: any) => i.productId);
+    const { data: dbProducts, error: productsError } = await userSupabase
+      .from('products')
+      .select('*, product_variants(*), images:product_images(image_url)')
+      .in('id', productIds);
 
-    if (variantsError || !variants || variants.length === 0) {
-      return res.status(400).json({ error: "Products could not be verified." });
+    if (productsError) {
+      console.error("Product Verification DB Error:", productsError);
+      return res.status(500).json({ error: "Failed to verify products due to a database error." });
+    }
+
+    if (!dbProducts || dbProducts.length === 0) {
+      return res.status(400).json({ error: "No valid products found in your cart." });
     }
 
     let subtotal = 0;
@@ -149,27 +154,51 @@ app.post("/api/checkout/create-order", async (req, res) => {
     let missingMapping = false;
 
     for (const item of items) {
-      const dbVariant = variants.find(v => v.id === item.variantId);
-      if (!dbVariant || !dbVariant.products?.active) {
-        return res.status(400).json({ error: "One or more products are inactive or unavailable." });
+      const dbProduct = dbProducts.find(p => p.id === item.productId);
+      
+      if (!dbProduct) {
+        return res.status(400).json({ error: `Product ID ${item.productId} could not be verified.` });
       }
       
-      const price = dbVariant.price ?? dbVariant.products.base_price;
+      if (!dbProduct.active) {
+        return res.status(400).json({ error: `Product "${dbProduct.name}" is currently inactive or unavailable.` });
+      }
+
+      // Check if this is a fallback variant (product has no variants, so variantId === productId)
+      const isFallbackVariant = item.variantId === item.productId && (!dbProduct.product_variants || dbProduct.product_variants.length === 0);
+      
+      let dbVariant = null;
+      if (isFallbackVariant) {
+        dbVariant = {
+          id: dbProduct.id,
+          price: dbProduct.base_price,
+          qikink_sku: "",
+          name: "Default",
+          product_id: dbProduct.id
+        };
+      } else {
+        dbVariant = dbProduct.product_variants?.find((v: any) => v.id === item.variantId);
+        if (!dbVariant) {
+          return res.status(400).json({ error: `Variant ID ${item.variantId} could not be found for product "${dbProduct.name}".` });
+        }
+      }
+      
+      const price = dbVariant.price ?? dbProduct.base_price;
       subtotal += price * item.quantity;
       
-      const finalQikinkSku = dbVariant.qikink_sku || dbVariant.products?.qikink_design_sku || "";
+      const finalQikinkSku = dbVariant.qikink_sku || dbProduct.qikink_design_sku || "";
       if (!finalQikinkSku) missingMapping = true;
 
       orderItemsToInsert.push({
-        product_id: dbVariant.product_id,
+        product_id: dbProduct.id,
         variant_id: dbVariant.id,
-        product_name: dbVariant.products.name,
-        variant_name: dbVariant.name,
+        product_name: dbProduct.name,
+        variant_name: dbVariant.name || "Default",
         qikink_sku: finalQikinkSku,
         quantity: item.quantity,
         unit_price: price,
         total_price: price * item.quantity,
-        product_image: dbVariant.products.images?.[0]?.image_url || ""
+        product_image: dbProduct.images?.[0]?.image_url || ""
       });
     }
 
