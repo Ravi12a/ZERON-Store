@@ -31,10 +31,18 @@ function getSupabaseClient(token?: string) {
 // Default anon client for things like fetching coupons or public products
 const supabase = getSupabaseClient();
 
-const razorpay = new Razorpay({
-key_id: process.env.RAZORPAY_KEY_ID || "",
-key_secret: process.env.RAZORPAY_KEY_SECRET || "",
-});
+let razorpayClient: any = null;
+function getRazorpay() {
+  if (!razorpayClient) {
+    const key_id = process.env.RAZORPAY_KEY_ID;
+    const key_secret = process.env.RAZORPAY_KEY_SECRET;
+    if (!key_id || !key_secret) {
+      throw new Error("Razorpay credentials are not configured.");
+    }
+    razorpayClient = new Razorpay({ key_id, key_secret });
+  }
+  return razorpayClient;
+}
 
 async function getUserFromAuthHeader(req: express.Request) {
 if (!cleanSupabaseUrl || cleanSupabaseUrl.includes("placeholder") || !cleanSupabaseAnonKey || cleanSupabaseAnonKey.includes("placeholder")) {
@@ -318,6 +326,7 @@ app.post("/api/checkout/create-order", async (req, res) => {
         return res.status(400).json({ error: "Order amount must be at least ₹1.00 for online payment." });
       }
       
+      const razorpay = getRazorpay();
       const rpOrder = await razorpay.orders.create({
         amount: amountInPaise,
         currency: "INR",
