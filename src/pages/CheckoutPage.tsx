@@ -309,7 +309,7 @@ export default function CheckoutPage() {
                 required
                 type="text" 
                 name="phone"
-                placeholder="Phone Number (Required for shipping)"
+                placeholder="Phone Number (Required for delivery)"
                 value={formData.phone}
                 onChange={handleChange}
                 className="w-full bg-neutral-950 border border-neutral-800 rounded-sm px-4 py-3 text-sm focus:outline-none focus:border-white transition-colors"
