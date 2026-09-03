@@ -1,3 +1,4 @@
+import { trackAddToCart } from "../../utils/metaPixel";
 import React from "react";
 import { Heart, ShoppingBag } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -27,6 +28,14 @@ export default function ProductCard({ product }: { product: Product; key?: React
     // Default to first variant
     const defaultVariant = product.variants.find(v => v.available) || product.variants[0];
     addCart(product, defaultVariant, 1);
+    
+    // Meta Pixel AddToCart
+    trackAddToCart({
+      content_ids: [product.id],
+      content_type: "product",
+      value: defaultVariant.price,
+      currency: "INR"
+    });
   };
 
   // Calculate discount percentage

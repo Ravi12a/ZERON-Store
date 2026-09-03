@@ -7,6 +7,7 @@ import { useCartStore } from "../store/useCartStore";
 import { useWishlistStore } from "../store/useWishlistStore";
 import { Minus, Plus, Heart, Star, ChevronDown, Check } from "lucide-react";
 import { cn } from "../lib/utils";
+import { trackViewContent, trackAddToCart } from "../utils/metaPixel";
 
 export default function ProductPage() {
   const { slug } = useParams();
@@ -32,6 +33,14 @@ export default function ProductPage() {
           setSelectedVariant(data.variants.find(v => v.available) || data.variants[0]);
           const revs = await api.reviews.getByProductId(data.id);
           setReviews(revs);
+          
+          // Meta Pixel ViewContent
+          trackViewContent({
+            content_ids: [data.id],
+            content_type: "product",
+            value: data.variants.find(v => v.available)?.price || data.variants[0].price,
+            currency: "INR"
+          });
         }
       }
       setIsLoading(false);
@@ -71,6 +80,14 @@ export default function ProductPage() {
   const handleAddToCart = () => {
     if (currentVariant.available) {
       addCart(product, currentVariant, quantity);
+      
+      // Meta Pixel AddToCart
+      trackAddToCart({
+        content_ids: [product.id],
+        content_type: "product",
+        value: currentVariant.price * quantity,
+        currency: "INR"
+      });
     }
   };
 

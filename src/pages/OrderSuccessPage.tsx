@@ -1,3 +1,4 @@
+import { trackPurchase } from "../utils/metaPixel";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { CheckCircle } from "lucide-react";
@@ -24,6 +25,22 @@ export default function OrderSuccessPage() {
         
         if (!error && data) {
           setOrder(data);
+          
+          // Meta Pixel Purchase Tracking
+          const trackedKey = `tracked_order_${data.id}`;
+          if (!localStorage.getItem(trackedKey)) {
+            const content_ids = data.order_items ? data.order_items.map((item: any) => item.product_id) : [];
+            const num_items = data.order_items ? data.order_items.reduce((acc: number, item: any) => acc + item.quantity, 0) : 0;
+            
+            trackPurchase({
+              content_ids,
+              content_type: "product",
+              value: data.total_amount,
+              currency: "INR",
+              num_items
+            });
+            localStorage.setItem(trackedKey, 'true');
+          }
         }
       } catch (err) {
         console.error("Error fetching order:", err);
