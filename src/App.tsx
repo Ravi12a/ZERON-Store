@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import MetaPixelTracker from "./components/MetaPixelTracker";
 import Layout from "./components/layout/Layout";
 import HomePage from "./pages/HomePage";
 import ShopPage from "./pages/ShopPage";
@@ -16,6 +17,7 @@ import PolicyPage from "./pages/PolicyPage";
 export default function App() {
   return (
     <Router>
+      <MetaPixelTracker />
       <Routes>
         <Route path="/" element={<Layout />}>
           <Route index element={<HomePage />} />
